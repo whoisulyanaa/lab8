@@ -1,0 +1,107 @@
+import csv
+from tkinter import *
+from tkinter import messagebox, filedialog
+import math
+
+
+class Diamond:
+    def __init__(self, center_x, center_y, width, height):
+        self.center_x = center_x
+        self.center_y = center_y
+        self.width = width
+        self.height = height
+
+    def get_vertices(self):
+        """Calculate the vertices of the diamond."""
+        return [
+            (self.center_x, self.center_y - self.height / 2),  # Top
+            (self.center_x + self.width / 2, self.center_y),  # Right
+            (self.center_x, self.center_y + self.height / 2),  # Bottom
+            (self.center_x - self.width / 2, self.center_y)   # Left
+        ]
+
+    def rotate(self, angle, pivot_x, pivot_y):
+        """Rotate the diamond around a pivot point."""
+        angle_rad = math.radians(angle)
+        vertices = self.get_vertices()
+        rotated_vertices = []
+        for x, y in vertices:
+            # Translate point back to origin
+            x -= pivot_x
+            y -= pivot_y
+            # Rotate point
+            new_x = x * math.cos(angle_rad) - y * math.sin(angle_rad)
+            new_y = x * math.sin(angle_rad) + y * math.cos(angle_rad)
+            # Translate point back
+            rotated_vertices.append((new_x + pivot_x, new_y + pivot_y))
+        return rotated_vertices
+
+
+class DiamondManager:
+    def __init__(self):
+        self.diamonds = []
+
+    def load_from_file(self, filename):
+        self.diamonds.clear()
+        try:
+            with open(filename, newline='', encoding='utf-8') as file:
+                reader = csv.reader(file)
+                next(reader)  # Skip header
+                for row in reader:
+                    if len(row) != 4:
+                        continue
+                    center_x, center_y, width, height = map(float, row)
+                    self.diamonds.append(Diamond(center_x, center_y, width, height))
+            return True
+        except Exception as e:
+            messagebox.showerror("Error loading", str(e))
+            return False
+
+    def check_intersection(self, diamond1, diamond2):
+        """Check if two diamonds intersect."""
+        # Simplified intersection check (bounding box)
+        return not (diamond1.center_x + diamond1.width / 2 < diamond2.center_x - diamond2.width / 2 or
+                    diamond1.center_x - diamond1.width / 2 > diamond2.center_x + diamond2.width / 2 or
+                    diamond1.center_y + diamond1.height / 2 < diamond2.center_y - diamond2.height / 2 or
+                    diamond1.center_y - diamond1.height / 2 > diamond2.center_y + diamond2.height / 2)
+
+
+class DiamondApp:
+    def __init__(self, root):
+        self.manager = DiamondManager()
+        self.root = root
+        self.root.title("Diamond Visualization")
+        self.canvas = Canvas(root, width=400, height=300, bg="white")
+        self.canvas.pack()
+
+        Button(root, text="Load Diamonds", command=self.load_data).pack(pady=5)
+        Button(root, text="Check Intersections", command=self.check_intersections).pack(pady=5)
+        Button(root, text="Visualize Diamonds", command=self.visualize_diamonds).pack(pady=5)
+
+    def load_data(self):
+        filepath = filedialog.askopenfilename(title="Select file", filetypes=[("CSV files", "*.csv")])
+        if filepath and self.manager.load_from_file(filepath):
+            messagebox.showinfo("Success", "File loaded successfully")
+
+    def check_intersections(self):
+        intersections = []
+        for i in range(len(self.manager.diamonds)):
+            for j in range(i + 1, len(self.manager.diamonds)):
+                if self.manager.check_intersection(self.manager.diamonds[i], self.manager.diamonds[j]):
+                    intersections.append((i, j))
+        if intersections:
+            messagebox.showinfo("Intersections", f"Intersections found between: {intersections}")
+        else:
+            messagebox.showinfo("Intersections", "No intersections found")
+
+    def visualize_diamonds(self):
+        self.canvas.delete("all")
+        for diamond in self.manager.diamonds:
+            vertices = diamond.get_vertices()
+            self.canvas.create_polygon(vertices, fill="blue", outline="black")
+
+
+if __name__ == "__main__":
+    root = Tk()
+    app = DiamondApp(root)
+    root.mainloop()
