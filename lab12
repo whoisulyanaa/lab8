@@ -1,0 +1,327 @@
+import tkinter as tk
+import random
+from tkinter import messagebox
+
+class SeaBattle:
+    def __init__(self):
+        self.root = tk.Tk()
+        self.root.title("Морской бой")
+        self.root.resizable(0, 0)
+
+        # Параметры игры
+        self.size = 10
+        self.cell_size = 30
+        self.ships = [4, 3, 3, 2, 2, 2, 1, 1, 1, 1]
+
+        # Игровые поля
+        self.player_grid = [[' ' for _ in range(self.size)] for _ in range(self.size)]
+        self.bot_grid = [[' ' for _ in range(self.size)] for _ in range(self.size)]
+        self.visible_grid = [[' ' for _ in range(self.size)] for _ in range(self.size)]
+
+        # Состояние игры
+        self.phase = "setup"
+        self.ship_index = 0
+        self.direction = "h"
+
+        self.create_interface()
+        self.place_bot_ships()
+
+    def create_interface(self):
+        """Создает интерфейс игры"""
+        # Основные фреймы
+        main_frame = tk.Frame(self.root)
+        main_frame.pack(pady=10)
+
+        # Поле игрока
+        player_frame = tk.Frame(main_frame)
+        player_frame.pack(side=tk.LEFT, padx=20)
+
+        tk.Label(player_frame, text="Ваше поле", font=("Arial", 12)).pack()
+
+        self.player_canvas = tk.Canvas(player_frame, width=self.size*self.cell_size,
+                                      height=self.size*self.cell_size, bg="lightblue")
+        self.player_canvas.pack()
+        self.player_canvas.bind("<Button-1>", self.place_ship_click)
+
+        # Поле бота
+        bot_frame = tk.Frame(main_frame)
+        bot_frame.pack(side=tk.RIGHT, padx=20)
+
+        tk.Label(bot_frame, text="Поле бота", font=("Arial", 12)).pack()
+
+        self.bot_canvas = tk.Canvas(bot_frame, width=self.size*self.cell_size,
+                                   height=self.size*self.cell_size, bg="lightblue")
+        self.bot_canvas.pack()
+        self.bot_canvas.bind("<Button-1>", self.shoot_click)
+
+        # Управление
+        control_frame = tk.Frame(self.root)
+        control_frame.pack(pady=10)
+
+        self.rotate_btn = tk.Button(control_frame, text="Повернуть корабль",
+                                   command=self.rotate_ship)
+        self.rotate_btn.pack(side=tk.LEFT, padx=5)
+
+        self.random_btn = tk.Button(control_frame, text="Случайная расстановка",
+                                   command=self.random_placement)
+        self.random_btn.pack(side=tk.LEFT, padx=5)
+
+        # Информация
+        self.info_label = tk.Label(self.root, text="Расставьте ваши корабли",
+                                  font=("Arial", 12))
+        self.info_label.pack(pady=5)
+
+        self.draw_grids()
+
+    def draw_grids(self):
+        """Рисует оба игровых поля"""
+        self.draw_grid(self.player_canvas, self.player_grid, True)
+        self.draw_grid(self.bot_canvas, self.visible_grid, False)
+
+    def draw_grid(self, canvas, grid, show_ships):
+        """Рисует одно игровое поле"""
+        canvas.delete("all")
+
+        # Сетка
+        for i in range(self.size + 1):
+            canvas.create_line(i*self.cell_size, 0, i*self.cell_size,
+                              self.size*self.cell_size, width=2)
+            canvas.create_line(0, i*self.cell_size, self.size*self.cell_size,
+                              i*self.cell_size, width=2)
+
+        # Клетки
+        for y in range(self.size):
+            for x in range(self.size):
+                x1 = x * self.cell_size + 2
+                y1 = y * self.cell_size + 2
+                x2 = (x + 1) * self.cell_size - 2
+                y2 = (y + 1) * self.cell_size - 2
+
+                cell = grid[y][x]
+
+                if cell == 'S' and show_ships:
+                    canvas.create_rectangle(x1, y1, x2, y2, fill="gray", outline="darkgray")
+                elif cell == 'X':
+                    canvas.create_rectangle(x1, y1, x2, y2, fill="red")
+                    canvas.create_line(x1, y1, x2, y2, width=2, fill="white")
+                    canvas.create_line(x2, y1, x1, y2, width=2, fill="white")
+                elif cell == 'O':
+                    canvas.create_oval(x1+5, y1+5, x2-5, y2-5, fill="lightblue", outline="blue")
+
+    def rotate_ship(self):
+        """Поворачивает корабль"""
+        self.direction = "v" if self.direction == "h" else "h"
+        self.info_label.config(text=f"Направление: {'Вертикальное' if self.direction == 'v' else 'Горизонтальное'}")
+
+    def random_placement(self):
+        """Случайно расставляет корабли"""
+        self.player_grid = [[' ' for _ in range(self.size)] for _ in range(self.size)]
+
+        for ship in self.ships:
+            placed = False
+            while not placed:
+                x = random.randint(0, self.size - 1)
+                y = random.randint(0, self.size - 1)
+                dir = random.choice(["h", "v"])
+                if self.can_place(y, x, ship, dir):
+                    self.put_ship(self.player_grid, y, x, ship, dir)
+                    placed = True
+
+        self.phase = "battle"
+        self.info_label.config(text="Игра началась! Ваш ход")
+        self.rotate_btn.config(state="disabled")
+        self.random_btn.config(state="disabled")
+        self.draw_grids()
+
+    def place_ship_click(self, event):
+        """Обрабатывает клик для расстановки кораблей"""
+        if self.phase != "setup":
+            return
+
+        x = event.x // self.cell_size
+        y = event.y // self.cell_size
+
+        if x >= self.size or y >= self.size:
+            return
+
+        ship = self.ships[self.ship_index]
+
+        if self.can_place(y, x, ship, self.direction):
+            self.put_ship(self.player_grid, y, x, ship, self.direction)
+            self.ship_index += 1
+
+            if self.ship_index >= len(self.ships):
+                self.phase = "battle"
+                self.info_label.config(text="Игра началась! Ваш ход")
+                self.rotate_btn.config(state="disabled")
+                self.random_btn.config(state="disabled")
+            else:
+                next_ship = self.ships[self.ship_index]
+                self.info_label.config(text=f"Разместите корабль из {next_ship} клеток")
+
+        self.draw_grids()
+
+    def can_place(self, y, x, ship, direction):
+        """Проверяет возможность размещения корабля"""
+        if direction == "h":
+            if x + ship > self.size:
+                return False
+            for i in range(ship):
+                if not self.is_cell_free(y, x + i):
+                    return False
+        else:
+            if y + ship > self.size:
+                return False
+            for i in range(ship):
+                if not self.is_cell_free(y + i, x):
+                    return False
+        return True
+
+    def is_cell_free(self, y, x):
+        """Проверяет свободна ли клетка и вокруг нее"""
+        for dy in [-1, 0, 1]:
+            for dx in [-1, 0, 1]:
+                ny, nx = y + dy, x + dx
+                if 0 <= ny < self.size and 0 <= nx < self.size:
+                    if self.player_grid[ny][nx] == 'S':
+                        return False
+        return True
+
+    def put_ship(self, grid, y, x, ship, direction):
+        """Размещает корабль на поле"""
+        if direction == "h":
+            for i in range(ship):
+                grid[y][x + i] = 'S'
+        else:
+            for i in range(ship):
+                grid[y + i][x] = 'S'
+
+    def place_bot_ships(self):
+        """Расставляет корабли бота"""
+        for ship in self.ships:
+            placed = False
+            while not placed:
+                x = random.randint(0, self.size - 1)
+                y = random.randint(0, self.size - 1)
+                dir = random.choice(["h", "v"])
+                if self.can_place_bot(y, x, ship, dir):
+                    self.put_ship(self.bot_grid, y, x, ship, dir)
+                    placed = True
+
+    def can_place_bot(self, y, x, ship, direction):
+        """Проверяет возможность размещения корабля бота"""
+        if direction == "h":
+            if x + ship > self.size:
+                return False
+            for i in range(ship):
+                if not self.is_cell_free_bot(y, x + i):
+                    return False
+        else:
+            if y + ship > self.size:
+                return False
+            for i in range(ship):
+                if not self.is_cell_free_bot(y + i, x):
+                    return False
+        return True
+
+    def is_cell_free_bot(self, y, x):
+        """Проверяет свободна ли клетка у бота"""
+        for dy in [-1, 0, 1]:
+            for dx in [-1, 0, 1]:
+                ny, nx = y + dy, x + dx
+                if 0 <= ny < self.size and 0 <= nx < self.size:
+                    if self.bot_grid[ny][nx] == 'S':
+                        return False
+        return True
+
+    def shoot_click(self, event):
+        """Обрабатывает выстрел игрока"""
+        if self.phase != "battle":
+            return
+
+        x = event.x // self.cell_size
+        y = event.y // self.cell_size
+
+        if x >= self.size or y >= self.size:
+            return
+
+        if self.visible_grid[y][x] != ' ':
+            messagebox.showwarning("Уже стреляли", "Вы уже стреляли в эту клетку!")
+            return
+
+        # Выстрел игрока
+        if self.bot_grid[y][x] == 'S':
+            self.visible_grid[y][x] = 'X'
+            self.bot_grid[y][x] = 'X'
+            self.info_label.config(text="Попадание! Стреляйте еще")
+
+            if self.check_win(self.bot_grid):
+                messagebox.showinfo("Победа!", "Вы выиграли! Все корабли бота потоплены!")
+                self.phase = "finished"
+        else:
+            self.visible_grid[y][x] = 'O'
+            self.info_label.config(text="Промах! Ход бота")
+            self.root.after(800, self.bot_turn)
+
+        self.draw_grids()
+
+    def bot_turn(self):
+        """Ход бота"""
+        # Простой ИИ: сначала ищет раненые корабли, потом стреляет случайно
+        target = self.find_target()
+
+        if not target:
+            # Случайный выстрел
+            empty_cells = []
+            for y in range(self.size):
+                for x in range(self.size):
+                    if self.player_grid[y][x] in [' ', 'S']:
+                        empty_cells.append((y, x))
+            if empty_cells:
+                target = random.choice(empty_cells)
+
+        if target:
+            y, x = target
+            if self.player_grid[y][x] == 'S':
+                self.player_grid[y][x] = 'X'
+                self.info_label.config(text="Бот попал! Его ход продолжается")
+                self.root.after(800, self.bot_turn)
+
+                if self.check_win(self.player_grid):
+                    messagebox.showinfo("Поражение", "Бот выиграл! Все ваши корабли потоплены.")
+                    self.phase = "finished"
+            else:
+                self.player_grid[y][x] = 'O'
+                self.info_label.config(text="Бот промахнулся! Ваш ход")
+
+        self.draw_grids()
+
+    def find_target(self):
+        """Находит цель для бота (простейший ИИ)"""
+        # Ищем подбитые корабли
+        for y in range(self.size):
+            for x in range(self.size):
+                if self.player_grid[y][x] == 'X':
+                    # Проверяем соседние клетки
+                    for dy, dx in [(0,1), (1,0), (0,-1), (-1,0)]:
+                        ny, nx = y + dy, x + dx
+                        if 0 <= ny < self.size and 0 <= nx < self.size:
+                            if self.player_grid[ny][nx] in [' ', 'S']:
+                                return (ny, nx)
+        return None
+
+    def check_win(self, grid):
+        """Проверяет победу"""
+        for row in grid:
+            if 'S' in row:
+                return False
+        return True
+
+    def run(self):
+        """Запускает игру"""
+        self.root.mainloop()
+
+# Запуск игры
+if __name__ == "__main__":
+    game = SeaBattle()
+    game.run()
